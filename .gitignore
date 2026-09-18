@@ -1,4 +1,8 @@
 __pycache__/
 *.pyc
-archive.html
 .DS_Store
+
+# 派生数据：可从上游重新获取，不入库（raw/ 有 9 MB，会让推送在本地代理下失败）
+raw/
+data.json
+archive.html

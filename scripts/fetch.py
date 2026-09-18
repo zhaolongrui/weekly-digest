@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-"""抓取周刊 Markdown 原文：补全已有期号，并自动探测新发布的期。
+"""抓取周刊 Markdown 原文：首次全量回填，之后只探测新发布的期。
 
 数据源优先级：jsDelivr 镜像（对国内/CI 都稳定）→ 直连 GitHub。
-新增期号通过"从已知最大期号往上试探"发现，最多连续失败 3 次即停。
+raw/ 不入库（9 MB，且可从上游重新获取），所以 CI 里目录可能是空的：
+此时从 START 一路并发下载到最新期；已有历史时只往上试探新期。
 """
 import os, re, json, time, urllib.request, ssl
+from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "raw")
 os.makedirs(RAW, exist_ok=True)
 
-START = 380          # 收录的起始期号
+START = 1            # 收录的起始期号（第 1 期，2018-04-22）
 MAX_PROBE = 8        # 每次最多往上试探几期
 MAX_MISS = 3         # 连续失败几次就认为没有新期
 
@@ -129,22 +131,9 @@ def fetch_archive():
     return False
 
 
-def main():
-    have = known_issues()
-    lo = min(have) if have else START
-    hi = max(have) if have else START - 1
-
-    # 1) 补全区间内的缺口
-    filled = 0
-    for n in range(lo, hi + 1):
-        if not has_issue(n) and fetch_issue(n):
-            filled += 1
-            print("fill", n)
-            time.sleep(0.15)
-
-    # 2) 往上探测新期
-    added, miss = [], 0
-    n = hi + 1
+def probe_latest(hi):
+    """从 hi+1 往上试探新期，返回新增期号列表"""
+    added, miss, n = [], 0, hi + 1
     while len(added) + miss < MAX_PROBE and miss < MAX_MISS:
         if fetch_issue(n):
             added.append(n)
@@ -154,13 +143,60 @@ def main():
             miss += 1
         n += 1
         time.sleep(0.15)
+    return added
+
+
+def probe_max(start):
+    """raw 为空时定位最新期号：先按步长跳，再线性收敛。下载到的期直接落盘。"""
+    if not fetch_issue(start):
+        return start - 1
+    lo, step = start, 16
+    while fetch_issue(lo + step):
+        lo += step
+    n, miss = lo + 1, 0
+    while miss < MAX_MISS and n < lo + step:
+        if fetch_issue(n):
+            lo, miss = n, 0
+        else:
+            miss += 1
+        n += 1
+        time.sleep(0.1)
+    return lo
+
+
+def download(nums, workers=12):
+    """并发下载一批期号，返回成功数"""
+    if not nums:
+        return 0
+    w = workers if len(nums) > 30 else 1
+    with ThreadPoolExecutor(max_workers=w) as ex:
+        return sum(1 for ok in ex.map(fetch_issue, nums) if ok)
+
+
+def main():
+    have = known_issues()
+
+    if not have:
+        # CI 首次：raw 是空的，先定位最新期号，再全量并发下载
+        top = probe_max(START)
+        print("latest issue =", top)
+        filled = download([n for n in range(START, top + 1) if not has_issue(n)])
+        added = list(range(START, top + 1))
+    else:
+        lo, hi = min(have), max(have)
+        gaps = [n for n in range(lo, hi + 1) if not has_issue(n)]
+        filled = download(gaps)
+        if gaps:
+            print("fill %d/%d" % (filled, len(gaps)))
+        added = probe_latest(hi)
 
     fetch_archive()
     now = known_issues()
     cache, got = backfill_dates(now)
-    print("filled=%d new=%s dates+=%d total=%d range=%d-%d"
-          % (filled, added, got, len(now), now[0], now[-1]))
-    return 1 if added else 0
+    print("filled=%d new=%d dates+=%d total=%d range=%d-%d"
+          % (filled, len(added), got, len(now), now[0], now[-1]))
+    # 退出码必须始终为 0：有新增是正常的，但 CI 步骤不能因此判失败
+    return 0
 
 
 if __name__ == "__main__":
