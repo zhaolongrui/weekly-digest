@@ -23,8 +23,8 @@ THEMES = [
     ("科学与趣味", "#65a30d", "沙子为什么粘手、米有多长、太空咖啡机。纯粹的好奇心。"),
     ("人生与心态", "#9333ea", "关于时间、确定性与如何与自己相处的零散智慧。"),
 ]
-# 置信度不足时归入「最新更新」待人工归类，而不是瞎猜一个主题
-PENDING = "最新更新"
+# 置信度不足时归入「未归类」，而不是瞎猜一个主题（排在所有主题之后）
+PENDING = "未归类"
 THEME_ORDER = [t[0] for t in THEMES]
 MIN_SCORE = 5   # 关键词打分低于此值 → 归入「最新更新」（实测阈值 5 时准确率约 74%）
 
@@ -112,6 +112,12 @@ def main():
     lp = os.path.join(ROOT, "labels.json")
     labels = json.load(open(lp, encoding="utf-8")) if os.path.exists(lp) else {}
 
+    # 丢弃已不存在条目的孤儿标签（期号/板块/序号变化或解析修正后会产生）
+    valid = {key(it) for it in data["items"]}
+    orphan = [k for k in labels if k not in valid]
+    for k in orphan:
+        del labels[k]
+
     added = []
     for it in data["items"]:
         k = key(it)
@@ -123,8 +129,11 @@ def main():
         added.append((it["issue"], it["section"], theme, score, take))
 
     json.dump(labels, open(lp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print("labels=%d 新增=%d" % (len(labels), len(added)))
-    for a in added[:40]:
+    import collections
+    dist = collections.Counter(v["theme"] for v in labels.values())
+    print("labels=%d 新增=%d 清理孤儿=%d" % (len(labels), len(added), len(orphan)))
+    print("主题分布:", dist.most_common())
+    for a in added[:25]:
         print("  #%d %s → %s (score %d) %s" % a)
 
 

@@ -2,9 +2,12 @@
 """渲染汇总页：读 data.json（原文）+ labels.json（主题与提炼），生成静态 HTML。
 
 全部内容静态预渲染，无脚本也能完整阅读；脚本只负责搜索、板块切换、按期号视图与复制。
-输出两份同名内容：科技爱好者集锦.html（正式名）与 index.html（GitHub Pages 根页）。
+
+输出：
+  index.html / 科技爱好者集锦.html —— 索引页（按年分卷入口 + 最近收录）
+  <年份>.html（如 2018.html）      —— 该年份分卷正文
 """
-import os, re, json, html, sys
+import os, re, json, html, sys, collections
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +15,8 @@ from classify import THEMES, PENDING, key  # noqa: E402
 
 THEME_COLOR = {t[0]: t[1] for t in THEMES}
 THEME_DESC = {t[0]: t[2] for t in THEMES}
+PENDING_COLOR = "#8a929c"
+PENDING_DESC = "关键词置信不足，未归入具体主题；新收录的条目也会先落在这里。"
 
 
 def esc(s):
@@ -62,7 +67,7 @@ def source_html(src):
 def card_static(it):
     scode = "0" if it["section"] == "文摘" else "1"
     cid = "c%d-%s-%d" % (it["issue"], scode, it["idx"])
-    color = THEME_COLOR.get(it["theme"], "#888")
+    color = THEME_COLOR.get(it["theme"], PENDING_COLOR)
     head = ""
     if it["section"] == "文摘":
         t = esc(it["title"])
@@ -82,84 +87,159 @@ def card_static(it):
         '</div>%s%s'
         '<div class="take"><b>提炼</b>%s</div>%s</div>'
     ) % (cid, it["issue"], it["section"], it["idx"],
-         it["issue"], it["date"], it["section"], color, it["theme"],
+         it["issue"], it["date"], it["section"], color, esc(it["theme"]),
          it["issue"], it["section"], it["idx"],
          head, body, esc(it["take"]),
          '<div class="src">— %s</div>' % src if src else "")
 
 
-def main():
-    data = json.load(open(os.path.join(ROOT, "data.json"), encoding="utf-8"))
-    labels = json.load(open(os.path.join(ROOT, "labels.json"), encoding="utf-8"))
+def group_html(name, color, desc, items):
+    return ('<div class="group" data-theme="%s"><div class="ghead">'
+            '<h3><span style="color:%s">●</span> %s</h3>'
+            '<span class="gdesc">%s</span><span class="gn">%d 条</span></div>%s</div>') % (
+        esc(name), color, esc(name), esc(desc), len(items),
+        "".join(card_static(i) for i in items))
 
-    items = []
-    for it in data["items"]:
-        lb = labels.get(key(it))
-        if not lb:
-            continue
-        it["theme"] = lb["theme"]
-        it["take"] = lb["take"]
-        items.append(it)
 
+def theme_list_html(items):
+    """按主题分组：正常主题按 THEMES 顺序，「未归类」永远排在最后"""
+    out = []
+    for name, color, desc in THEMES:
+        g = [i for i in items if i["theme"] == name]
+        if g:
+            g.sort(key=lambda x: (-x["issue"], x["idx"]))
+            out.append(group_html(name, color, desc, g))
+    rest = [i for i in items if i["theme"] == PENDING]
+    if rest:
+        rest.sort(key=lambda x: (-x["issue"], x["idx"]))
+        out.append(group_html(PENDING, PENDING_COLOR, PENDING_DESC, rest))
+    return "".join(out)
+
+
+def years_html(years, cur=None):
+    a = ['<a class="idx" href="index.html">总览</a>']
+    for y in years:
+        a.append('<a href="%d.html"%s>%d</a>' % (y, ' class="on"' if y == cur else "", y))
+    return "".join(a)
+
+
+def render_volume(items, years, year, css_tpl, tpl, meta_by_issue):
     issues = sorted({i["issue"] for i in items})
     lo, hi = issues[0], issues[-1]
     dates = sorted(i["date"] for i in items if i["date"])
     d0, d1 = (dates[0], dates[-1]) if dates else ("", "")
     n_dig = sum(1 for i in items if i["section"] == "文摘")
     n_quo = len(items) - n_dig
-    year = d1[:4] if d1 else ""
-    range_txt = "第 %d–%d 期" % (lo, hi)
-    span = "%s 至 %s" % (d0, d1) if d0 else ""
 
-    title = "科技爱好者集锦 · 文摘与言论汇总（%s）" % range_txt
-    sub = ("阮一峰《科技爱好者周刊》%s%s的「文摘」与「言论」板块，共 %d 条（文摘 %d、言论 %d），"
-           "逐条保留原文、补一条提炼，并按主题重新归类。"
-           % (year + " 年" if year else "", range_txt, len(items), n_dig, n_quo))
-    footer = "数据来源：阮一峰《科技爱好者周刊》开源仓库（%s%s）的「文摘」「言论」板块原文。" % (
-        range_txt, "，%s" % span if span else "")
-
-    # 按主题分组；「最新更新」（未归类）排在最前，便于看到新增内容
-    pending = [i for i in items if i["theme"] == PENDING]
-    list_html = ""
-    if pending:
-        pending.sort(key=lambda x: (-x["issue"], x["idx"]))
-        list_html += ('<div class="group" data-theme="%s"><div class="ghead">'
-                      '<h3><span style="color:#b45309">●</span> %s</h3>'
-                      '<span class="gdesc">最近新收录、尚未归入具体主题的条目（提炼为自动摘要）。</span>'
-                      '<span class="gn">%d 条</span></div>%s</div>') % (
-            PENDING, PENDING, len(pending), "".join(card_static(i) for i in pending))
-
-    order = [t[0] for t in THEMES]
-    for name in order:
-        g = [i for i in items if i["theme"] == name]
-        if not g:
-            continue
-        g.sort(key=lambda x: (-x["issue"], x["idx"]))
-        list_html += ('<div class="group" data-theme="%s"><div class="ghead">'
-                      '<h3><span style="color:%s">●</span> %s</h3>'
-                      '<span class="gdesc">%s</span><span class="gn">%d 条</span></div>%s</div>') % (
-            esc(name), THEME_COLOR[name], esc(name), esc(THEME_DESC[name]),
-            len(g), "".join(card_static(i) for i in g))
+    title = "科技爱好者集锦 · %d 年（第 %d–%d 期）" % (year, lo, hi)
+    sub = ("阮一峰《科技爱好者周刊》%d 年共 %d 期（第 %d–%d 期，%s 至 %s），"
+           "收录「文摘」%d 条、「言论」%d 条，合计 %d 条。原文逐条保留，另附主题与一句话提炼。"
+           % (year, len(issues), lo, hi, d0, d1, n_dig, n_quo, len(items)))
+    footer = ("数据来源：阮一峰《科技爱好者周刊》开源仓库 %d 年第 %d–%d 期（%s 至 %s）"
+              "的「文摘」「言论」板块原文。" % (year, lo, hi, d0, d1))
 
     light = [{k: it[k] for k in ("issue", "date", "section", "idx", "title", "url",
                                  "source", "text", "theme", "take")} for it in items]
-    payload = {"items": light, "issues": data["issues"],
+    payload = {"items": light,
+               "issues": [{"issue": n, "date": meta_by_issue.get(n, {}).get("date", ""),
+                           "subject": meta_by_issue.get(n, {}).get("subject", "")} for n in issues],
                "themes": [{"name": n, "color": c, "desc": d} for n, c, d in THEMES]
-                         + [{"name": PENDING, "color": "#b45309",
-                             "desc": "最近新收录、尚未归入具体主题的条目。"}]}
-
-    tpl = open(os.path.join(ROOT, "scripts", "template.html"), encoding="utf-8").read()
+                         + [{"name": PENDING, "color": PENDING_COLOR, "desc": PENDING_DESC}]}
     out = (tpl.replace("/*__DATA__*/", json.dumps(payload, ensure_ascii=False))
-              .replace("/*__LIST__*/", list_html)
+              .replace("/*__LIST__*/", theme_list_html(items))
               .replace("/*__TITLE__*/", esc(title))
               .replace("/*__SUB__*/", esc(sub))
-              .replace("/*__FOOTER__*/", footer))
+              .replace("/*__FOOTER__*/", footer)
+              .replace("/*__YEARS__*/", years_html(years, year)))
+    return out, len(items)
 
-    for name in ("科技爱好者集锦.html", "index.html"):
-        open(os.path.join(ROOT, name), "w", encoding="utf-8").write(out)
-    print("written:", len(out), "bytes | 条目", len(items),
-          "| 期号 %d-%d | 分组" % (lo, hi), out.count('class="group"'))
-    print("残留占位符:", [k for k in ("__DATA__", "__LIST__", "__TITLE__", "__SUB__", "__FOOTER__") if k in out])
+
+def main():
+    data = json.load(open(os.path.join(ROOT, "data.json"), encoding="utf-8"))
+    labels = json.load(open(os.path.join(ROOT, "labels.json"), encoding="utf-8"))
+
+    known = {t[0] for t in THEMES}
+    items = []
+    for it in data["items"]:
+        lb = labels.get(key(it))
+        if not lb:
+            continue
+        # 兜底：主题名不在当前体系中（改名、旧标签残留）时归入「未归类」，绝不丢条目
+        it["theme"] = lb["theme"] if lb["theme"] in known else PENDING
+        it["take"] = lb["take"]
+        items.append(it)
+    items.sort(key=lambda x: (x["date"] or "", x["issue"],
+                              0 if x["section"] == "文摘" else 1, x["idx"]))
+
+    by_year = collections.OrderedDict()
+    for it in items:
+        by_year.setdefault(it["date"][:4] or "未知", []).append(it)
+    years = sorted(int(y) for y in by_year if y != "未知")
+
+    tpl = open(os.path.join(ROOT, "scripts", "template.html"), encoding="utf-8").read()
+    itpl = open(os.path.join(ROOT, "scripts", "index_template.html"), encoding="utf-8").read()
+    css = tpl[tpl.index("<style>") + 7:tpl.index("</style>")]
+
+    meta_by_issue = {m["issue"]: m for m in data["issues"]}
+
+    total = 0
+    for y in years:
+        out, n = render_volume(by_year[str(y)], years, y, css, tpl, meta_by_issue)
+        open(os.path.join(ROOT, "%d.html" % y), "w", encoding="utf-8").write(out)
+        total += n
+        print("  %d.html  %d 条  %.0f KB" % (y, n, len(out.encode("utf-8")) / 1024))
+
+    # ---- 索引页 ----
+    all_issues = sorted({i["issue"] for i in items})
+    all_dates = sorted(i["date"] for i in items if i["date"])
+    n_dig = sum(1 for i in items if i["section"] == "文摘")
+    n_quo = len(items) - n_dig
+    maxv = max(len(by_year[str(y)]) for y in years)
+
+    vols = []
+    for y in years:
+        g = by_year[str(y)]
+        iss = sorted({i["issue"] for i in g})
+        d = sorted(i["date"] for i in g if i["date"])
+        nd = sum(1 for i in g if i["section"] == "文摘")
+        vols.append(
+            '<a class="vol" href="%d.html"><b>%d 年</b>'
+            '<span class="rng">第 %d–%d 期 · %s 至 %s</span>'
+            '<span class="cnt">%d 条 · 文摘 %d · 言论 %d</span>'
+            '<span class="bar2"><i style="width:%d%%"></i></span></a>'
+            % (y, y, iss[0], iss[-1], d[0][5:], d[-1][5:], len(g), nd, len(g) - nd,
+               round(len(g) / maxv * 100)))
+    recent = sorted(items, key=lambda x: (-x["issue"], 0 if x["section"] == "文摘" else 1, x["idx"]))[:12]
+
+    title = "科技爱好者集锦 · 阮一峰周刊文摘与言论汇总（2018–%d）" % years[-1]
+    sub = ("阮一峰《科技爱好者周刊》第 %d–%d 期（%s 至 %s）的「文摘」与「言论」板块，"
+           "共 %d 条（文摘 %d、言论 %d），按年份分为 %d 卷。"
+           % (all_issues[0], all_issues[-1], all_dates[0], all_dates[-1],
+              len(items), n_dig, n_quo, len(years)))
+    note = ("每卷是独立页面，老手机打开也无压力：点年份进入后可搜索关键词、只看文摘或言论、"
+            "在「按主题」与「按期号」之间切换。<br>"
+            "2019 年 3 月（第 49 期）之前，「言论」板块名为「本周金句」，性质相同，已统一按言论收录；"
+            "早期的「文摘」每期有多条短篇摘录，后期才固定为每期一篇长文摘。")
+    footer = ("数据来源：阮一峰《科技爱好者周刊》开源仓库第 %d–%d 期（%s 至 %s）"
+              "的「文摘」「言论」板块原文。"
+              % (all_issues[0], all_issues[-1], all_dates[0], all_dates[-1]))
+
+    idx = (itpl.replace("/*__CSS__*/", css)
+               .replace("/*__TITLE__*/", esc(title))
+               .replace("/*__SUB__*/", esc(sub))
+               .replace("/*__NOTE__*/", note)
+               .replace("/*__VOLS__*/", "".join(vols))
+               .replace("/*__RECENT__*/", "".join(card_static(i) for i in recent))
+               .replace("/*__FOOTER__*/", footer))
+
+    for name in ("index.html", "科技爱好者集锦.html"):
+        open(os.path.join(ROOT, name), "w", encoding="utf-8").write(idx)
+
+    print("index.html  索引页 %.0f KB | 共 %d 条 / %d 卷 | 期号 %d-%d"
+          % (len(idx.encode("utf-8")) / 1024, total, len(years), all_issues[0], all_issues[-1]))
+    ph = ("__DATA__", "__LIST__", "__TITLE__", "__SUB__", "__FOOTER__",
+          "__YEARS__", "__CSS__", "__VOLS__", "__NOTE__", "__RECENT__")
+    print("残留占位符:", [k for k in ph if k in idx])
 
 
 if __name__ == "__main__":
