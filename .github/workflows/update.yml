@@ -1,0 +1,48 @@
+name: 更新周刊集锦
+
+on:
+  schedule:
+    # 周刊通常周五发布，这里周五 UTC 13:00（北京时间 21:00）跑一次
+    - cron: '0 13 * * 5'
+  workflow_dispatch:    # 也可在网页上手动点「Run workflow」立即更新
+  push:
+    paths:
+      - 'labels.json'   # 标签被人工修订后自动重渲染
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 抓取新一期
+        id: fetch
+        run: python scripts/fetch.py
+
+      - name: 抽取原文
+        run: python scripts/extract.py
+
+      - name: 补齐主题与提炼
+        run: python scripts/classify.py
+
+      - name: 生成页面
+        run: python scripts/build.py
+
+      - name: 有更新则提交
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "本次无内容更新"
+          else
+            git commit -m "chore: 周刊集锦自动更新 $(date -u +%Y-%m-%d)"
+            git push
+          fi

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="format-detection" content="telephone=no">
+<title>/*__TITLE__*/</title>
+<style>
+/* 兼容取向：不使用 CSS 变量、网格布局、吸顶定位、毛玻璃滤镜，均给出降级方案 */
+*{box-sizing:border-box;-webkit-box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:#f6f6f4;color:#1f2328;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:15px;line-height:1.75;word-wrap:break-word;-webkit-tap-highlight-color:rgba(0,0,0,.06)}
+a{color:#1d4ed8;text-decoration:none}
+a:hover{text-decoration:underline}
+code{background:#f0efeb;padding:1px 5px;border-radius:4px;font-size:.88em}
+.wrap{max-width:940px;margin:0 auto;padding:0 20px 70px}
+
+header{padding:34px 0 22px;border-bottom:1px solid #e4e2dd;margin-bottom:22px}
+h1{font-size:27px;line-height:1.35;margin:0 0 10px;letter-spacing:-.2px}
+.sub{color:#5b6570;font-size:14px;margin:0}
+
+/* 工具栏 */
+.bar{background:#f3f3f0;border:1px solid #e4e2dd;border-radius:10px;padding:12px;margin-bottom:22px}
+.seg{display:inline-block;margin:0 8px 8px 0;vertical-align:middle}
+.seg button{border:1px solid #ddd9d2;background:#fff;padding:8px 12px;font-size:13.5px;cursor:pointer;
+  color:#5b6570;font-family:inherit;margin-left:-1px;line-height:1.4}
+.seg button:first-child{margin-left:0;border-radius:8px 0 0 8px}
+.seg button:last-child{border-radius:0 8px 8px 0}
+.seg button.on{background:#1f2328;color:#fff;border-color:#1f2328}
+#q{display:block;width:100%;max-width:330px;padding:9px 12px;border:1px solid #ddd9d2;border-radius:8px;
+  background:#fff;font-size:14px;font-family:inherit;color:#1f2328;margin:0 0 10px}
+#q:focus{outline:none;border-color:#b9b4aa}
+.res{font-size:12.5px;color:#8a929c;margin-top:2px}
+.res b{color:#b45309}
+
+/* 条目 */
+.group{margin:26px 0 0}
+.ghead{padding:0 0 9px;border-bottom:1px solid #e4e2dd;margin-bottom:13px;overflow:hidden}
+.ghead h3{margin:0;font-size:15.5px;font-weight:650;display:inline}
+.ghead .gdesc{font-size:12.5px;color:#8a929c;margin-left:8px}
+.ghead .gn{float:right;font-size:12px;color:#8a929c}
+.card{background:#fff;border:1px solid #e4e2dd;border-radius:11px;padding:15px 16px;margin-bottom:11px}
+.meta{margin-bottom:10px;overflow:hidden}
+.iss{display:inline-block;font-size:12px;font-weight:600;background:#f0efeb;color:#5b6570;padding:2px 8px;border-radius:6px}
+.date{display:inline-block;font-size:12px;color:#8a929c;margin-left:6px}
+.sec2{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:6px;background:#eef2f7;color:#3b5b8c;margin-left:6px}
+.tag{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:20px;color:#fff;font-weight:500;margin:3px 0 0 6px}
+.copy{float:right;border:1px solid #ddd9d2;background:#fff;border-radius:7px;
+  font-size:11.5px;padding:3px 10px;cursor:pointer;color:#8a929c;font-family:inherit;line-height:1.6}
+.copy:active{color:#1f2328}
+.title{font-size:15.5px;font-weight:650;margin:0 0 8px;line-height:1.5}
+.body p{margin:0 0 9px}
+.body p:last-child{margin-bottom:0}
+.body .qblock{border-left:3px solid #e4e2dd;padding-left:12px;color:#5b6570}
+.quote{background:#faf9f6;border-left:3px solid #b45309;padding:12px 14px;margin:0 0 10px}
+.quote p{margin:0 0 8px}
+.quote p:last-child{margin-bottom:0}
+.take{font-size:13.5px;color:#5b6570;background:#faf9f6;border:1px dashed #e4e2dd;border-radius:8px;padding:8px 12px;margin-top:10px}
+.take b{color:#b45309;font-weight:600;margin-right:6px}
+.src{font-size:12.5px;color:#8a929c;margin-top:9px}
+.src a{color:#1d4ed8}
+.empty{text-align:center;padding:50px 0;color:#8a929c;font-size:14px}
+footer{margin-top:50px;padding-top:18px;border-top:1px solid #e4e2dd;font-size:12.5px;color:#8a929c;line-height:1.8}
+@media (max-width:640px){
+  .wrap{padding:0 14px 50px}
+  h1{font-size:22px}
+  #q{max-width:none}
+  .gdesc{display:block;margin-left:0;margin-top:2px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>科技爱好者集锦</h1>
+  <p class="sub">/*__SUB__*/</p>
+</header>
+
+<div class="bar">
+  <input id="q" type="search" placeholder="搜索关键词，试试：AI、代码、晋升、开源">
+  <div class="seg" id="segSec">
+    <button data-v="all" class="on">全部</button>
+    <button data-v="文摘">文摘</button>
+    <button data-v="言论">言论</button>
+  </div>
+  <div class="seg" id="segView">
+    <button data-v="theme" class="on">按主题</button>
+    <button data-v="issue">按期号</button>
+  </div>
+  <div class="res" id="res"></div>
+</div>
+
+<div id="listTheme">/*__LIST__*/</div>
+<div id="listIssue" style="display:none"></div>
+<div id="themeEmpty" class="empty" style="display:none">没有匹配的条目，换个关键词试试。</div>
+
+<footer>
+  /*__FOOTER__*/<br>
+  原文版权归原作者及周刊所有，本页仅作摘录、归类与阅读整理；「提炼」与主题标签为整理者所加，不代表原作者观点。<br>
+  正文为静态内容，不依赖脚本即可阅读；搜索、筛选与「按期号」视图为脚本增强功能，点击卡片右上角「复制」可复制原文与出处。
+</footer>
+</div>
+
+<script>
+/* ES5：不使用 let/const、箭头函数、模板字符串、Set、Element.closest */
+/* 正文已静态渲染，本脚本只负责搜索、筛选、按期号视图与复制 */
+var DATA = /*__DATA__*/;
+
+function $(s){ return document.querySelector(s); }
+function esc(s){
+  s = s || "";
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function themeColor(name){
+  for(var i=0;i<DATA.themes.length;i++){ if(DATA.themes[i].name === name) return DATA.themes[i].color; }
+  return "#888";
+}
+function key(it){ return it.issue + "|" + it.section + "|" + it.idx; }
+
+var state = { q:"", sec:"all", view:"theme" };
+
+/* 建立"静态卡片"索引：卡片由服务端预渲染，这里只记录引用 */
+var cardMap = {};
+(function(){
+  var cards = document.querySelectorAll("#listTheme .card");
+  for(var i=0;i<cards.length;i++){
+    var c = cards[i];
+    cardMap[c.getAttribute("data-i") + "|" + c.getAttribute("data-s") + "|" + c.getAttribute("data-x")] = c;
+  }
+})();
+var groups = document.querySelectorAll("#listTheme .group");
+
+function match(it){
+  if(state.sec !== "all" && it.section !== state.sec) return false;
+  var kw = state.q.replace(/^\s+|\s+$/g,"").toLowerCase();
+  if(kw){
+    var hay = (it.title + " " + it.text + " " + it.source + " " + it.take + " " + it.theme).toLowerCase();
+    if(hay.indexOf(kw) < 0) return false;
+  }
+  return true;
+}
+function filtered(){
+  var out = [];
+  for(var i=0;i<DATA.items.length;i++){ if(match(DATA.items[i])) out.push(DATA.items[i]); }
+  return out;
+}
+
+/* 主题视图：直接显示/隐藏已有的静态卡片 */
+function showTheme(items){
+  var keep = {};
+  for(var i=0;i<items.length;i++){ keep[key(items[i])] = 1; }
+  for(var k in cardMap){ cardMap[k].style.display = keep[k] ? "" : "none"; }
+  for(var g=0;g<groups.length;g++){
+    var grp = groups[g];
+    var n = 0, tn = grp.getAttribute("data-theme");
+    for(var i2=0;i2<items.length;i2++){ if(items[i2].theme === tn) n++; }
+    var gn = grp.getElementsByTagName("span");
+    for(var s=0;s<gn.length;s++){ if(String(gn[s].className).indexOf("gn") >= 0) gn[s].innerHTML = n + " 条"; }
+    grp.style.display = n ? "" : "none";
+  }
+  $("#themeEmpty").style.display = items.length ? "none" : "";
+}
+
+/* 期号视图：克隆静态卡片节点重组，保证两个视图渲染一致 */
+function showIssue(items){
+  var order = [], seen = {}, byIssue = {}, n;
+  for(var p=0;p<items.length;p++){
+    n = items[p].issue;
+    if(!seen[n]){ seen[n] = 1; order.push(n); byIssue[n] = []; }
+    byIssue[n].push(items[p]);
+  }
+  order.sort(function(x,y){ return y - x; });
+  var html = "";
+  for(var o=0;o<order.length;o++){
+    n = order[o];
+    var g = byIssue[n];
+    g.sort(function(x,y){
+      if(x.section === y.section) return x.idx - y.idx;
+      return x.section === "文摘" ? -1 : 1;
+    });
+    var iss = null;
+    for(var z=0;z<DATA.issues.length;z++){ if(DATA.issues[z].issue === n) iss = DATA.issues[z]; }
+    html += '<div class="group"><div class="ghead"><h3>第 ' + n + ' 期</h3>' +
+      '<span class="gdesc">' + (iss ? iss.date + "　" + iss.subject : "") + '</span>' +
+      '<span class="gn">' + g.length + ' 条</span></div>';
+    for(var c=0;c<g.length;c++){
+      var src = cardMap[key(g[c])];
+      html += '<div class="cardwrap" data-clone="' + key(g[c]) + '"></div>';
+      void src;
+    }
+    html += '</div>';
+  }
+  var box = $("#listIssue");
+  box.innerHTML = html;
+  /* 把静态卡片克隆进占位容器 */
+  var wraps = box.getElementsByTagName("div");
+  for(var w=0;w<wraps.length;w++){
+    var el = wraps[w];
+    if(String(el.className).indexOf("cardwrap") < 0) continue;
+    var node = cardMap[el.getAttribute("data-clone")];
+    if(!node) continue;
+    var cp = node.cloneNode(true);
+    cp.removeAttribute("id");
+    cp.style.display = "";
+    el.parentNode.replaceChild(cp, el);
+  }
+}
+
+function render(){
+  var items = filtered();
+  var kw = state.q.replace(/^\s+|\s+$/g,"");
+  $("#res").innerHTML = "共 <b>" + items.length + "</b> 条" + (kw ? "（关键词「" + esc(kw) + "」）" : "");
+  if(state.view === "issue"){
+    $("#listTheme").style.display = "none";
+    $("#themeEmpty").style.display = "none";
+    $("#listIssue").style.display = "";
+    if(items.length){ showIssue(items); }
+    else { $("#listIssue").innerHTML = '<div class="empty">没有匹配的条目，换个关键词试试。</div>'; }
+  } else {
+    $("#listIssue").style.display = "none";
+    $("#listIssue").innerHTML = "";
+    $("#listTheme").style.display = "";
+    showTheme(items);
+  }
+}
+
+/* 复制：优先 Clipboard API，降级到 execCommand */
+function copyDone(btn, ok){
+  btn.innerHTML = ok ? "已复制" : "复制失败";
+  setTimeout(function(){ btn.innerHTML = "复制"; }, 1500);
+}
+function copyFallback(txt, btn){
+  try{
+    var ta = document.createElement("textarea");
+    ta.value = txt;
+    ta.setAttribute("readonly", "readonly");
+    ta.style.position = "absolute";
+    ta.style.left = "-9999px";
+    ta.style.fontSize = "16px";
+    document.body.appendChild(ta);
+    ta.select();
+    if(ta.setSelectionRange){ ta.setSelectionRange(0, txt.length); }
+    var ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    copyDone(btn, ok);
+  }catch(e){ copyDone(btn, false); }
+}
+function doCopy(txt, btn){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    try{
+      navigator.clipboard.writeText(txt).then(function(){ copyDone(btn, true); }, function(){ copyFallback(txt, btn); });
+      return;
+    }catch(e){}
+  }
+  copyFallback(txt, btn);
+}
+
+/* 事件：手写向上查找，不用 closest */
+function findUp(node, cls){
+  while(node && node !== document){
+    if(node.className && String(node.className).indexOf(cls) >= 0) return node;
+    node = node.parentNode;
+  }
+  return null;
+}
+function segHandler(id, k){
+  var box = $(id);
+  if(!box) return;
+  box.onclick = function(e){
+    e = e || window.event;
+    var el = e.target || e.srcElement;
+    if(!el || el.tagName !== "BUTTON") return;
+    state[k] = el.getAttribute("data-v");
+    var bs = box.getElementsByTagName("button");
+    for(var i=0;i<bs.length;i++){ bs[i].className = (bs[i] === el) ? "on" : ""; }
+    render();
+  };
+}
+segHandler("#segSec", "sec");
+segHandler("#segView", "view");
+
+var qEl = $("#q");
+if(qEl){
+  qEl.oninput = function(){ state.q = this.value; render(); };
+  qEl.onpropertychange = function(){ state.q = this.value; render(); };
+}
+document.onclick = function(e){
+  e = e || window.event;
+  var b = findUp(e.target || e.srcElement, "copy");
+  if(!b) return;
+  var parts = String(b.getAttribute("data-copy")).split("|");
+  var it = null;
+  for(var i=0;i<DATA.items.length;i++){
+    if(DATA.items[i].issue == parts[0] && DATA.items[i].section === parts[1] && DATA.items[i].idx == parts[2]){ it = DATA.items[i]; break; }
+  }
+  if(!it) return;
+  var txt = (it.section === "文摘" ? it.title + "\n" : "") + it.text + "\n— " + it.source.replace(/\[|\]\([^)]*\)/g, "");
+  doCopy(txt, b);
+};
+document.onkeydown = function(e){
+  e = e || window.event;
+  var k = e.key || e.keyCode;
+  if(k === "/" || k === 191){
+    if(qEl && document.activeElement !== qEl){ if(e.preventDefault) e.preventDefault(); qEl.focus(); }
+  }
+  if(k === "Escape" || k === 27){
+    if(qEl){ qEl.value = ""; state.q = ""; render(); }
+  }
+};
+
+render();
+</script>
+</body>
+</html>
