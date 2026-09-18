@@ -19,10 +19,18 @@ def decode_cfemail(hexstr):
 
 
 def load_dates():
-    """归档页日期被 Cloudflare 邮箱保护混淆，按首字节 XOR 解码"""
+    """发布日期：优先用 dates.json（来自周刊仓库提交日期，稳定可得），
+    缺失时回落归档页（日期被 Cloudflare 邮箱保护混淆，按首字节 XOR 解码）。"""
+    out = {}
+    cp = os.path.join(ROOT, "dates.json")
+    if os.path.exists(cp):
+        try:
+            out = {int(k): v for k, v in json.load(open(cp, encoding="utf-8")).items()}
+        except Exception:
+            out = {}
     p = os.path.join(ROOT, "archive.html")
     if not os.path.exists(p):
-        return {}
+        return out
     t = open(p, encoding="utf-8", errors="ignore").read()
     out = {}
     for m in re.finditer(
@@ -37,7 +45,9 @@ def load_dates():
             mm = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", decode_cfemail(cf.group(1)))
             if mm:
                 date = "-".join(mm.groups())
-        out[int(num)] = date or (year + "-" + month)
+        num = int(num)
+        if num not in out:
+            out[num] = date or (year + "-" + month)
     return out
 
 

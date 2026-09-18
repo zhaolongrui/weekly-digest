@@ -4,7 +4,7 @@
 数据源优先级：jsDelivr 镜像（对国内/CI 都稳定）→ 直连 GitHub。
 新增期号通过"从已知最大期号往上试探"发现，最多连续失败 3 次即停。
 """
-import os, re, time, urllib.request, ssl
+import os, re, json, time, urllib.request, ssl
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "raw")
@@ -65,6 +65,57 @@ def known_issues():
     return sorted(ns)
 
 
+def load_date_cache():
+    p = os.path.join(ROOT, "dates.json")
+    if os.path.exists(p):
+        try:
+            return {int(k): v for k, v in json.load(open(p, encoding="utf-8")).items()}
+        except Exception:
+            return {}
+    return {}
+
+
+def save_date_cache(d):
+    json.dump({str(k): v for k, v in sorted(d.items())},
+              open(os.path.join(ROOT, "dates.json"), "w", encoding="utf-8"),
+              ensure_ascii=False, indent=1)
+
+
+def fetch_commit_date(n):
+    """用周刊仓库的提交日期作为发布日期。
+
+    归档页（www.ruanyifeng.com）在 GitHub Actions 里常常取不到，而 api.github.com
+    对 Actions 永远可达，因此把 commit 日期作为可靠来源，并缓存进 dates.json。
+    """
+    url = ("https://api.github.com/repos/ruanyf/weekly/commits"
+           "?path=docs/issue-%d.md&per_page=1" % n)
+    try:
+        arr = json.loads(get(url, timeout=30).decode("utf-8", "ignore"))
+        if arr and arr[0].get("commit"):
+            return arr[0]["commit"]["committer"]["date"][:10]
+    except Exception:
+        pass
+    return ""
+
+
+def backfill_dates(nums, limit=40):
+    cache = load_date_cache()
+    todo = [n for n in nums if not cache.get(n)]
+    if not todo:
+        return cache, 0
+    got = 0
+    for n in todo[-limit:]:
+        d = fetch_commit_date(n)
+        if d:
+            cache[n] = d
+            got += 1
+            print("date", n, d)
+        time.sleep(0.2)
+    if got:
+        save_date_cache(cache)
+    return cache, got
+
+
 def fetch_archive():
     for url in (ARCHIVE,):
         try:
@@ -106,7 +157,9 @@ def main():
 
     fetch_archive()
     now = known_issues()
-    print("filled=%d new=%s total=%d range=%d-%d" % (filled, added, len(now), now[0], now[-1]))
+    cache, got = backfill_dates(now)
+    print("filled=%d new=%s dates+=%d total=%d range=%d-%d"
+          % (filled, added, got, len(now), now[0], now[-1]))
     return 1 if added else 0
 
 
