@@ -17,6 +17,10 @@ THEME_COLOR = {t[0]: t[1] for t in THEMES}
 THEME_DESC = {t[0]: t[2] for t in THEMES}
 PENDING_COLOR = "#8a929c"
 PENDING_DESC = "关键词置信不足，未归入具体主题；新收录的条目也会先落在这里。"
+# 主题色写成 class（t0/t1…），避免每张卡片内联 style，减小文件体积
+ALL_THEMES = list(THEMES) + [(PENDING, PENDING_COLOR, PENDING_DESC)]
+THEME_CLASS = {t[0]: "t%d" % i for i, t in enumerate(ALL_THEMES)}
+TAGS_CSS = "".join(".tag.%s{background:%s}" % (THEME_CLASS[t[0]], t[1]) for t in ALL_THEMES)
 
 
 def esc(s):
@@ -67,7 +71,7 @@ def source_html(src):
 def card_static(it):
     scode = "0" if it["section"] == "文摘" else "1"
     cid = "c%d-%s-%d" % (it["issue"], scode, it["idx"])
-    color = THEME_COLOR.get(it["theme"], PENDING_COLOR)
+    tcls = THEME_CLASS.get(it["theme"], THEME_CLASS[PENDING])
     head = ""
     if it["section"] == "文摘":
         t = esc(it["title"])
@@ -78,16 +82,16 @@ def card_static(it):
         else ('<blockquote class="quote">%s</blockquote>' % md_to_html(it["text"]))
     src = source_html(it["source"])
     return (
-        '<div class="card" id="%s" data-i="%d" data-s="%s" data-x="%d">'
+        '<div class="card" id="%s" data-i="%d" data-s="%s" data-x="%d" data-t="%s">'
         '<div class="meta">'
         '<span class="iss">第 %d 期</span><span class="date">%s</span>'
         '<span class="sec2">%s</span>'
-        '<span class="tag" style="background:%s">%s</span>'
+        '<span class="tag %s">%s</span>'
         '<button class="copy" data-copy="%d|%s|%d">复制</button>'
         '</div>%s%s'
         '<div class="take"><b>提炼</b>%s</div>%s</div>'
-    ) % (cid, it["issue"], it["section"], it["idx"],
-         it["issue"], it["date"], it["section"], color, esc(it["theme"]),
+    ) % (cid, it["issue"], it["section"], it["idx"], esc(it["theme"]),
+         it["issue"], it["date"], it["section"], tcls, esc(it["theme"]),
          it["issue"], it["section"], it["idx"],
          head, body, esc(it["take"]),
          '<div class="src">— %s</div>' % src if src else "")
@@ -116,6 +120,22 @@ def theme_list_html(items):
     return "".join(out)
 
 
+def issue_groups_html(items, meta_by_issue):
+    """「按期号」视图的静态骨架：只有分组头，卡片由脚本搬进来（不克隆、不重建）"""
+    by = collections.OrderedDict()
+    for it in items:
+        by.setdefault(it["issue"], []).append(it)
+    out = []
+    for n in sorted(by, reverse=True):
+        m = meta_by_issue.get(n, {})
+        out.append(
+            '<div class="group" data-iss="%d"><div class="ghead">'
+            '<h3>第 %d 期</h3><span class="gdesc">%s　%s</span>'
+            '<span class="gn">%d 条</span></div></div>'
+            % (n, n, esc(m.get("date", "")), esc(m.get("subject", "")), len(by[n])))
+    return "".join(out)
+
+
 def years_html(years, cur=None):
     a = ['<a class="idx" href="index.html">总览</a>']
     for y in years:
@@ -138,15 +158,9 @@ def render_volume(items, years, year, css_tpl, tpl, meta_by_issue):
     footer = ("数据来源：阮一峰《科技爱好者周刊》开源仓库 %d 年第 %d–%d 期（%s 至 %s）"
               "的「文摘」「言论」板块原文。" % (year, lo, hi, d0, d1))
 
-    light = [{k: it[k] for k in ("issue", "date", "section", "idx", "title", "url",
-                                 "source", "text", "theme", "take")} for it in items]
-    payload = {"items": light,
-               "issues": [{"issue": n, "date": meta_by_issue.get(n, {}).get("date", ""),
-                           "subject": meta_by_issue.get(n, {}).get("subject", "")} for n in issues],
-               "themes": [{"name": n, "color": c, "desc": d} for n, c, d in THEMES]
-                         + [{"name": PENDING, "color": PENDING_COLOR, "desc": PENDING_DESC}]}
-    out = (tpl.replace("/*__DATA__*/", json.dumps(payload, ensure_ascii=False))
-              .replace("/*__LIST__*/", theme_list_html(items))
+    out = (tpl.replace("/*__LIST__*/", theme_list_html(items))
+              .replace("/*__IGROUPS__*/", issue_groups_html(items, meta_by_issue))
+              .replace("/*__TAGS__*/", TAGS_CSS)
               .replace("/*__TITLE__*/", esc(title))
               .replace("/*__SUB__*/", esc(sub))
               .replace("/*__FOOTER__*/", footer)
@@ -178,7 +192,7 @@ def main():
 
     tpl = open(os.path.join(ROOT, "scripts", "template.html"), encoding="utf-8").read()
     itpl = open(os.path.join(ROOT, "scripts", "index_template.html"), encoding="utf-8").read()
-    css = tpl[tpl.index("<style>") + 7:tpl.index("</style>")]
+    css = tpl[tpl.index("<style>") + 7:tpl.index("</style>")].replace("/*__TAGS__*/", TAGS_CSS)
 
     meta_by_issue = {m["issue"]: m for m in data["issues"]}
 
@@ -237,9 +251,9 @@ def main():
 
     print("index.html  索引页 %.0f KB | 共 %d 条 / %d 卷 | 期号 %d-%d"
           % (len(idx.encode("utf-8")) / 1024, total, len(years), all_issues[0], all_issues[-1]))
-    ph = ("__DATA__", "__LIST__", "__TITLE__", "__SUB__", "__FOOTER__",
-          "__YEARS__", "__CSS__", "__VOLS__", "__NOTE__", "__RECENT__")
-    print("残留占位符:", [k for k in ph if k in idx])
+    ph = ("__DATA__", "__LIST__", "__IGROUPS__", "__TAGS__", "__TITLE__", "__SUB__",
+          "__FOOTER__", "__YEARS__", "__CSS__", "__VOLS__", "__NOTE__", "__RECENT__")
+    print("残留占位符:", [k for k in ph if ("/*" + k + "*/") in idx])
 
 
 if __name__ == "__main__":

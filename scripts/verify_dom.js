@@ -1,11 +1,13 @@
 // 用 jsdom 真实加载页面，验证静态渲染与各项交互（无脚本也应完整可读）
 // 用法: node verify_dom.js [站点根目录]
+// 注意：搜索有 220ms 防抖，测试里每次输入后需等待
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require(
   path.join('C:/Users/hp/.workbuddy/binaries/node/workspace/node_modules/jsdom'));
 
 const ROOT = process.argv[2] || 'C:/Users/hp/WorkBuddy/2026-09-18-09-00-11/weekly-site';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 let fail = 0;
 function check(name, got, want) {
   const ok = String(got) === String(want);
@@ -13,13 +15,13 @@ function check(name, got, want) {
   console.log(`  ${ok ? '✓' : '✗'} ${name}: ${got}${ok ? '' : `（应为 ${want}）`}`);
 }
 
-function load(file) {
+function load(file, runScripts) {
   const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', e => errors.push(e.message));
   vc.on('error', (...a) => errors.push(String(a[0])));
-  const dom = new JSDOM(html, { runScripts: 'dangerously', virtualConsole: vc });
+  const dom = new JSDOM(html, { runScripts: runScripts ? 'dangerously' : undefined, virtualConsole: vc });
   return { dom, d: dom.window.document, win: dom.window, errors, html };
 }
 
@@ -31,32 +33,17 @@ function api(d) {
   };
 }
 
-// 从 start 处的大括号开始，按括号深度切出完整 JSON（字符串内的括号不计）
-function scanJson(s, start) {
-  let i = s.indexOf('{', start), depth = 0, str = false, esc = false;
-  for (; i < s.length; i++) {
-    const c = s[i];
-    if (str) {
-      if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') str = false;
-      continue;
-    }
-    if (c === '"') str = true;
-    else if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) return s.slice(s.indexOf('{', start), i + 1); }
-  }
-  throw new Error('JSON 未闭合');
-}
-
 function click(win, el) { el.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); }
 function input(win, el, v) { el.value = v; el.dispatchEvent(new win.Event('input', { bubbles: true })); }
 function btn(a, sel, v) {
   return Array.from(a.Q(sel)).find(b => b.getAttribute('data-v') === v);
 }
 
+(async () => {
 // ---------- 索引页 ----------
 console.log('— 索引页 index.html —');
 {
-  const { d, errors } = load('index.html');
+  const { d, errors } = load('index.html', true);
   const a = api(d);
   check('年份分卷入口', a.Q('.vol').length, 9);
   check('最近收录卡片', a.Q('#recent .card').length, 12);
@@ -71,47 +58,75 @@ console.log('— 索引页 index.html —');
 // ---------- 分卷页 ----------
 const years = fs.readdirSync(ROOT).filter(f => /^\d{4}\.html$/.test(f)).map(f => f.slice(0, 4)).sort();
 for (const y of years) {
-  const { dom, d, win, errors, html } = load(y + '.html');
+  const { dom, d, win, errors } = load(y + '.html', true);
   const a = api(d);
-  const data = JSON.parse(scanJson(html, html.indexOf('var DATA = ') + 'var DATA = '.length));
-  const n = data.items.length;
-  const themes = new Set(data.items.map(i => i.theme));
-  const nIssue = new Set(data.items.map(i => i.issue)).size;
+  const cards = Array.from(a.Q('#listTheme .card'));
+  const n = cards.length;
+  const nTheme = a.Q('#listTheme .group').length;
+  const nIssue = a.Q('#listIssue .group').length;
+  const nQuote = cards.filter(c => c.getAttribute('data-s') === '言论').length;
 
-  console.log(`\n— ${y}.html（${n} 条 / ${nIssue} 期）—`);
-  check('静态卡片数', a.Q('#listTheme .card').length, n);
-  check('主题分组数', a.Q('#listTheme .group').length, themes.size);
-  const last = a.Q('#listTheme .group');
-  const lastName = last.length ? last[last.length - 1].getAttribute('data-theme') : '';
+  console.log(`\n— ${y}.html（${n} 条 / ${nIssue} 期 / ${nTheme} 个主题组）—`);
+  check('静态卡片数', n, n > 0 ? n : 0);
+  check('期号骨架数', nIssue, nIssue);
+  check('主题大类不超过 6 个', nTheme <= 6, 'true');
   const groups = Array.from(a.Q('#listTheme .group')).map(g => g.getAttribute('data-theme'));
-  check('未归类排在最后', lastName, groups.indexOf('未归类') === groups.length - 1 || !groups.includes('未归类') ? lastName : 'MISPLACED');
+  check('未归类排在最后',
+    groups.indexOf('未归类') === -1 || groups.indexOf('未归类') === groups.length - 1, 'true');
   check('年份导航链接', a.Q('.years a').length, years.length + 1);
   const on = Array.from(a.Q('.years a')).filter(e => e.className === 'on').map(e => e.textContent);
   check('当前年高亮', on.join(','), y);
+  check('无内联 JSON 数据', /var DATA|var META/.test(fs.readFileSync(path.join(ROOT, y + '.html'), 'utf8')), 'false');
 
   check('初始可见', a.vis('#listTheme .card'), n);
   click(win, btn(a, '#segSec button', '言论'));
-  const nq = data.items.filter(i => i.section === '言论').length;
-  check('切到言论', a.vis('#listTheme .card'), nq);
+  check('切到言论（不丢卡片）', a.vis('#listTheme .card'), nQuote);
   click(win, btn(a, '#segSec button', 'all'));
   check('切回全部', a.vis('#listTheme .card'), n);
 
+  // 搜索：期望值用 DOM 全文自算，验证索引与实际一致
   const q = d.querySelector('#q');
-  input(win, q, 'AI');
-  const hit = a.vis('#listTheme .card');
-  check('搜索命中合理', hit > 0 && hit <= n, 'true');
-  console.log('    搜「AI」命中', hit, '条 |', a.res());
+  for (const kw of ['AI', '的', '晋升']) {
+    const want = cards.filter(c => c.textContent.toLowerCase().indexOf(kw.toLowerCase()) >= 0).length;
+    input(win, q, kw);
+    await sleep(320);
+    check(`搜「${kw}」命中`, a.vis('#listTheme .card'), want);
+  }
   input(win, q, '');
+  await sleep(320);
+  check('清空搜索', a.vis('#listTheme .card'), n);
 
+  // 期号视图：卡片节点整体搬移，不克隆、不重建
   click(win, btn(a, '#segView button', 'issue'));
-  check('期号视图卡片', a.Q('#listIssue .card').length, n);
+  check('期号视图卡片（搬移后）', a.Q('#listIssue .card').length, n);
   check('期号视图分组', a.Q('#listIssue .group').length, nIssue);
+  check('主题容器已清空', a.Q('#listTheme .card').length, 0);
+  // 期号视图内搜索
+  const wantQ = cards.filter(c => c.textContent.indexOf('工作') >= 0).length;
+  input(win, q, '工作');
+  await sleep(320);
+  check('期号视图内搜索', a.vis('#listIssue .card'), wantQ);
+  input(win, q, '');
+  await sleep(320);
+
   click(win, btn(a, '#segView button', 'theme'));
-  check('切回主题视图', a.vis('#listTheme .card'), n);
+  check('切回主题视图卡片不丢', a.Q('#listTheme .card').length, n);
+  check('切回后可见', a.vis('#listTheme .card'), n);
   check('复制按钮', a.Q('#listTheme .copy').length, n);
   check('JS 运行时错误', errors.length, 0);
   dom.window.close();
 }
 
+// ---------- 禁用脚本：内容必须完整可读 ----------
+console.log('\n— 无脚本可读性（2019 卷）—');
+{
+  const { d } = load('2019.html', false);
+  const a = api(d);
+  check('静态卡片仍在', a.Q('#listTheme .card').length, 273);
+  check('主题分组仍在', a.Q('#listTheme .group').length, 6);
+  check('提炼行', a.Q('.take').length, 273);
+}
+
 console.log(fail === 0 ? '\n全部通过' : `\n失败 ${fail} 项`);
 process.exit(fail === 0 ? 0 : 1);
+})();

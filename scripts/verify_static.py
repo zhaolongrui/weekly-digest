@@ -50,8 +50,9 @@ for P in files:
           "| 出处行:", body.count('class="src"'))
     print("  已移除(统计/速览/芯片):",
           body.count('class="stat"'), body.count('class="tcard"'), body.count('class="chip'))
-    ph = [k for k in ("__DATA__", "__LIST__", "__TITLE__", "__SUB__", "__FOOTER__",
-                      "__YEARS__", "__CSS__", "__VOLS__", "__NOTE__", "__RECENT__") if k in t]
+    ph = [k for k in ("__DATA__", "__LIST__", "__IGROUPS__", "__TAGS__", "__TITLE__", "__SUB__",
+                      "__FOOTER__", "__YEARS__", "__CSS__", "__VOLS__", "__NOTE__", "__RECENT__")
+          if ("/*" + k + "*/") in t]
     if ph:
         fail += 1
     print("  占位符残留:", ph or "无")
@@ -62,8 +63,12 @@ for P in files:
         continue
 
     js = t[t.index("<script>") + 8: t.rindex("</script>")]
-    js_code = re.sub(r"var DATA = \{[\s\S]*?\};\n", "var DATA = {};\n", js, count=1)
-    print("  JS ES5 兼容性:", scan("js", js_code, JS_BAN))
+    if re.search(r"var (DATA|META) =", js):
+        fail += 1
+        print("  ✗ 脚本仍含内联数据（应为零数据脚本）")
+    else:
+        print("  脚本内联数据: 无（搜索走 DOM 索引）")
+    print("  JS ES5 兼容性:", scan("js", js, JS_BAN))
 
     tmp = os.path.join(ROOT, "_check.js")
     open(tmp, "w", encoding="utf-8").write(js)
@@ -74,13 +79,11 @@ for P in files:
         print(r.stderr[:500])
     os.remove(tmp)
 
-    i = js.index("var DATA = ") + len("var DATA = ")
-    d, _ = json.JSONDecoder().raw_decode(js[i:])
-    miss = [x["issue"] for x in d["items"]
-            if not x.get("take") or not x.get("theme") or not x.get("text")]
-    if miss:
+    ntheme = len(re.findall(r'class="group" data-theme=', body))
+    niss = len(re.findall(r'class="group" data-iss=', body))
+    if ntheme > 6:
         fail += 1
-    print("  数据:", len(d["items"]), "条 /", len(d["themes"]), "主题 /", len(d["issues"]), "期 | 缺字段:", miss or "无")
+    print("  分组:", ntheme, "个主题（≤6） /", niss, "个期号骨架")
     print("  标题:", re.search(r"<title>(.*?)</title>", t).group(1))
 
 print("\n" + ("全部通过" if fail == 0 else "失败 %d 项" % fail))
