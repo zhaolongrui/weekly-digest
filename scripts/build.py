@@ -188,7 +188,8 @@ def main():
     by_year = collections.OrderedDict()
     for it in items:
         by_year.setdefault(it["date"][:4] or "未知", []).append(it)
-    years = sorted(int(y) for y in by_year if y != "未知")
+    # 新→旧：索引页分卷入口、分卷顶部年份导航均由这一顺序决定
+    years = sorted((int(y) for y in by_year if y != "未知"), reverse=True)
 
     tpl = open(os.path.join(ROOT, "scripts", "template.html"), encoding="utf-8").read()
     itpl = open(os.path.join(ROOT, "scripts", "index_template.html"), encoding="utf-8").read()
@@ -225,7 +226,8 @@ def main():
                round(len(g) / maxv * 100)))
     recent = sorted(items, key=lambda x: (-x["issue"], 0 if x["section"] == "文摘" else 1, x["idx"]))[:12]
 
-    title = "科技爱好者集锦 · 阮一峰周刊文摘与言论汇总（2018–%d）" % years[-1]
+    old, new = years[-1], years[0]
+    title = "科技爱好者集锦 · 阮一峰周刊文摘与言论汇总（%d–%d）" % (old, new)
     sub = ("阮一峰《科技爱好者周刊》第 %d–%d 期（%s 至 %s）的「文摘」与「言论」板块，"
            "共 %d 条（文摘 %d、言论 %d），按年份分为 %d 卷。"
            % (all_issues[0], all_issues[-1], all_dates[0], all_dates[-1],
