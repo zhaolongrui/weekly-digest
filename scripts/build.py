@@ -114,7 +114,7 @@ def main():
     title = "科技爱好者集锦 · 文摘与言论汇总（%s）" % range_txt
     sub = ("阮一峰《科技爱好者周刊》%s%s的「文摘」与「言论」板块，共 %d 条（文摘 %d、言论 %d），"
            "逐条保留原文、补一条提炼，并按主题重新归类。"
-           % (year + "年" if year else "", range_txt, len(items), n_dig, n_quo))
+           % (year + " 年" if year else "", range_txt, len(items), n_dig, n_quo))
     footer = "数据来源：阮一峰《科技爱好者周刊》开源仓库（%s%s）的「文摘」「言论」板块原文。" % (
         range_txt, "，%s" % span if span else "")
 
